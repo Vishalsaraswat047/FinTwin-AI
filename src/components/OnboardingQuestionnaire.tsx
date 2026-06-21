@@ -1,587 +1,232 @@
-import React, { useState } from 'react';
-import { 
-  Building2, 
-  DollarSign, 
-  Users, 
-  TrendingUp, 
-  ShieldAlert, 
-  ArrowRight, 
-  ArrowLeft,
-  Sparkles,
-  HelpCircle,
-  PiggyBank,
-  CheckCircle,
-  Briefcase,
-  Target
+import React, { useState, useCallback, useMemo } from 'react';
+import {
+  Building2, DollarSign, Users, TrendingUp, ArrowRight, ArrowLeft, HelpCircle, PiggyBank,
+  CheckCircle, Briefcase, Target, AlertCircle, BarChart3, Wallet, Receipt, UserCheck, CalendarDays, Banknote, Sparkles
 } from 'lucide-react';
 import { FinancialData } from '../types';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Progress } from './ui/progress';
+import { Label } from './ui/label';
+import { formatCurrency } from '../lib/utils';
 
-interface OnboardingQuestionnaireProps {
-  onComplete: (data: FinancialData) => void;
-  defaultData: FinancialData;
-}
+interface Props { onComplete: (data: FinancialData) => void; }
 
-export default function OnboardingQuestionnaire({ onComplete, defaultData }: OnboardingQuestionnaireProps) {
+const INDUSTRIES = ['B2B SaaS & Cloud', 'E-Commerce & Retail', 'FinTech & Banking', 'Healthcare & Biotech', 'Manufacturing & Logistics', 'Real Estate & PropTech', 'Media & Entertainment', 'Education & EdTech', 'Energy & CleanTech', 'Professional Services', 'Telecommunications', 'Food & Beverage', 'Other'];
+const REVENUE_TYPES = ['Subscription / Recurring', 'One-time Product Sales', 'Professional Services', 'Licensing & Royalties', 'Advertising', 'Transaction Fees', 'Hardware / Physical', 'Diversified'];
+const STAGES = ['Seed / Pre-revenue', 'Early Stage (0-2 yrs)', 'Growth (2-5 yrs)', 'Scale-up (5-10 yrs)', 'Mature (10+ yrs)'];
+const COST_DRIVERS = ['Payroll & Benefits', 'Cloud / Infrastructure', 'Sales & Marketing', 'Office & Facilities', 'Cost of Goods Sold', 'R&D / Engineering', 'Legal & Compliance', 'Other'];
+
+type Errors = Partial<Record<string, string>>;
+
+export default function OnboardingQuestionnaire({ onComplete }: Props) {
   const [step, setStep] = useState(1);
-  const totalSteps = 5;
-
-  // Local state initialized with default values or standard empty ranges to customize
-  const [formValues, setFormValues] = useState<FinancialData>({
-    companyName: '',
-    industry: '',
-    revenue: 0,
-    expenses: 0,
-    profit: 0,
-    cashOnHand: 0,
-    cac: 0,
-    ltv: 0,
-    headcount: 0,
-    healthScore: 80,
-    growthScore: 75,
-    monthlyTrend: defaultData.monthlyTrend
+  const [errors, setErrors] = useState<Errors>({});
+  const [f, setF] = useState({
+    companyName: '', industry: '', stage: '', headcount: null as number | null,
+    revenueType: '', revenue: null as number | null, revGrowth: null as number | null, recurringPct: null as number | null,
+    expenses: null as number | null, costDriver: '', payrollPct: null as number | null,
+    cashOnHand: null as number | null, cac: null as number | null, ltv: null as number | null, contractMonths: null as number | null,
   });
 
-  // Help state to track splits
-  const [rSaaS, setRSaaS] = useState(64);
-  const [rIoT, setRIoT] = useState(16);
-  const [rServices, setRServices] = useState(20);
+  const update = useCallback(<K extends keyof typeof f>(k: K, v: (typeof f)[K]) => {
+    setF(p => ({ ...p, [k]: v }));
+    setErrors(p => { const c = { ...p }; delete c[k as string]; return c; });
+  }, []);
 
-  const [ePayroll, setEPayroll] = useState(58);
-  const [eCloud, setECloud] = useState(13);
-  const [eMarketing, setEMarketing] = useState(11);
-  const [eRent, setERent] = useState(18);
+  const scores = useMemo(() => {
+    const rev = f.revenue || 0; const exp = f.expenses || 0; const cash = f.cashOnHand || 0;
+    const cac = f.cac || 1; const ltv = f.ltv || 0; const hc = f.headcount || 1;
+    const profit = rev - exp; const margin = rev > 0 ? profit / rev * 100 : 0;
+    const runway = exp > 0 ? cash / exp : 0; const ltvCac = cac > 0 ? ltv / cac : 0;
+    let h = 30; if (margin > 0) h += 10; if (margin > 15) h += 10; if (margin > 30) h += 10;
+    if (runway > 3) h += 10; if (runway > 6) h += 5; if (runway > 12) h += 5;
+    if (ltvCac > 3) h += 10; if (ltvCac > 5) h += 5; if (rev / hc > 10000) h += 5;
+    let g = 25; if (margin > 10) g += 10; if (margin > 25) g += 10;
+    if (ltvCac > 4) g += 10; if (f.revGrowth !== null && f.revGrowth > 0) g += 10;
+    if (f.revGrowth !== null && f.revGrowth > 20) g += 10;
+    if ((f.headcount || 0) > 10) g += 10; if ((f.recurringPct || 0) > 50) g += 5;
+    return { profit, margin: margin.toFixed(1), runway: runway.toFixed(1), ltvRatio: ltvCac.toFixed(1), health: Math.min(100, Math.max(5, h)), growth: Math.min(100, Math.max(5, g)) };
+  }, [f]);
 
-  const formatCurrency = (val: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0
-    }).format(val);
+  const validate = (s: number): boolean => {
+    const e: Errors = {};
+    if (s === 1) { if (!f.companyName.trim()) e.companyName = 'Required'; if (!f.industry) e.industry = 'Select industry'; if (!f.stage) e.stage = 'Select stage'; if (!f.headcount || f.headcount < 1) e.headcount = 'Enter team size'; }
+    if (s === 2) { if (!f.revenueType) e.revenueType = 'Select type'; if (!f.revenue || f.revenue < 1) e.revenue = 'Enter revenue'; if (f.recurringPct === null || f.recurringPct < 0 || f.recurringPct > 100) e.recurringPct = 'Enter 0-100'; }
+    if (s === 3) { if (!f.expenses || f.expenses < 1) e.expenses = 'Enter expenses'; if (!f.costDriver) e.costDriver = 'Select driver'; if (f.payrollPct === null || f.payrollPct < 0 || f.payrollPct > 100) e.payrollPct = 'Enter 0-100'; }
+    if (s === 4) { if (f.cashOnHand === null || f.cashOnHand < 0) e.cashOnHand = 'Enter cash'; if (!f.cac || f.cac < 1) e.cac = 'Enter CAC'; if (!f.ltv || f.ltv < 1) e.ltv = 'Enter LTV'; if (f.contractMonths === null || f.contractMonths < 1) e.contractMonths = 'Enter months'; }
+    setErrors(e); return Object.keys(e).length === 0;
   };
 
-  const handleAutofillDefault = () => {
-    setFormValues({
-      ...defaultData,
-      companyName: 'StellarTech Solutions Inc.',
-      industry: 'B2B SaaS & IoT Devices',
-      revenue: 1250000,
-      expenses: 950000,
-      profit: 300000,
-      cashOnHand: 3400000,
-      cac: 1200,
-      ltv: 6500,
-      headcount: 42,
-      healthScore: 85,
-      growthScore: 74
-    });
-    setRSaaS(64);
-    setRIoT(16);
-    setRServices(20);
-    setEPayroll(58);
-    setECloud(13);
-    setEMarketing(11);
-    setERent(18);
-  };
-
-  const calculateDynamicScore = () => {
-    // Generate organic scoring baselines based on dynamic actual metrics provided
-    const ltvCacRatio = formValues.cac > 0 ? (formValues.ltv / formValues.cac) : 1;
-    const netMargin = formValues.revenue > 0 ? ((formValues.revenue - formValues.expenses) / formValues.revenue) * 100 : 0;
-    const runway = formValues.expenses > 0 ? (formValues.cashOnHand / formValues.expenses) : 12;
-
-    // Financial Health Calculation (weight margins, runways, metrics ratio)
-    let dynamicHealth = 50;
-    if (netMargin > 0) dynamicHealth += 15;
-    if (netMargin > 20) dynamicHealth += 10;
-    if (runway > 3) dynamicHealth += 10;
-    if (runway > 12) dynamicHealth += 10;
-    if (ltvCacRatio > 3) dynamicHealth += 5;
-    if (ltvCacRatio > 5) dynamicHealth += 5;
-    
-    // Growth Rating calculation
-    let dynamicGrowth = 45;
-    if (netMargin > 15) dynamicGrowth += 10;
-    if (ltvCacRatio > 4) dynamicGrowth += 15;
-    if (formValues.headcount > 10) dynamicGrowth += 10;
-    if (formValues.revenue > 1000000) dynamicGrowth += 10;
-
-    return {
-      health: Math.min(100, Math.max(10, Math.round(dynamicHealth))),
-      growth: Math.min(100, Math.max(10, Math.round(dynamicGrowth)))
-    };
-  };
-
-  const handleNextStep = () => {
-    // Validation rules
-    if (step === 1) {
-      if (!formValues.companyName.trim()) {
-        alert('Please provide a valid Company Name.');
-        return;
+  const next = () => {
+    if (validate(step)) {
+      if (step < 5) { setStep(s => s + 1); setErrors({}); } else {
+        const r = f.revenue || 0; const ex = f.expenses || 0; const c = f.cashOnHand || 0;
+        onComplete({
+          companyName: f.companyName, industry: f.industry, revenue: r, expenses: ex, profit: r - ex,
+          cashOnHand: c, cac: f.cac || 0, ltv: f.ltv || 0, headcount: f.headcount || 1,
+          healthScore: scores.health, growthScore: scores.growth,
+          monthlyTrend: [
+            { month: 'M-3', revenue: Math.round(r * 0.85), expenses: Math.round(ex * 0.88), profit: Math.round(r * 0.85 - ex * 0.88), cashFlow: Math.round(c * 0.85) },
+            { month: 'M-2', revenue: Math.round(r * 0.92), expenses: Math.round(ex * 0.93), profit: Math.round(r * 0.92 - ex * 0.93), cashFlow: Math.round(c * 0.92) },
+            { month: 'M-1', revenue: Math.round(r * 0.97), expenses: Math.round(ex * 0.97), profit: Math.round(r * 0.97 - ex * 0.97), cashFlow: Math.round(c * 0.97) },
+            { month: 'Now', revenue: r, expenses: ex, profit: r - ex, cashFlow: c },
+            { month: 'M+1', revenue: Math.round(r * 1.03), expenses: Math.round(ex * 1.02), profit: Math.round(r * 1.03 - ex * 1.02), cashFlow: Math.round(c * 1.02) },
+            { month: 'M+2', revenue: Math.round(r * 1.05), expenses: Math.round(ex * 1.03), profit: Math.round(r * 1.05 - ex * 1.03), cashFlow: Math.round(c * 1.04) },
+          ],
+        });
       }
-      if (!formValues.industry.trim()) {
-        alert('Please indicate your Industry Vertical.');
-        return;
-      }
-      if (formValues.headcount <= 0) {
-        alert('Please provide a realistic corporate headcount.');
-        return;
-      }
-    }
-    if (step === 2) {
-      if (formValues.revenue <= 0) {
-        alert('Please supply an Active Monthly Revenue baseline.');
-        return;
-      }
-    }
-    if (step === 3) {
-      if (formValues.expenses <= 0) {
-        alert('Please configure your Monthly Operating Expenses.');
-        return;
-      }
-    }
-    if (step === 4) {
-      if (formValues.cashOnHand < 0) {
-        alert('Please state some cash reserves.');
-        return;
-      }
-      if (formValues.cac <= 0 || formValues.ltv <= 0) {
-        alert('Please supply standard sales metrics definitions (CAC & LTV).');
-        return;
-      }
-    }
-
-    if (step < totalSteps) {
-      setStep(step + 1);
-    } else {
-      // Completed, compute dynamic appraisals before committing
-      const scores = calculateDynamicScore();
-      const updatedFields: FinancialData = {
-        ...formValues,
-        profit: formValues.revenue - formValues.expenses,
-        healthScore: scores.health,
-        growthScore: scores.growth
-      };
-      onComplete(updatedFields);
     }
   };
 
-  const handlePrevStep = () => {
-    if (step > 1) {
-      setStep(step - 1);
-    }
-  };
+  const totalSteps = 5;
 
   return (
-    <div className="max-w-3xl mx-auto my-8 p-1 sm:p-4" id="onboarding_questionnaire_container">
-      {/* Autofill header trigger for speedy testing */}
-      <div className="flex justify-between items-center bg-zinc-900/60 border border-indigo-950/40 p-4 rounded-xl mb-6 text-xs gap-4 shadow-md shadow-indigo-950/5">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span className="text-zinc-300">Want to test immediately with standard enterprise values?</span>
-        </div>
-        <button
-          type="button"
-          onClick={handleAutofillDefault}
-          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 hover:text-white text-indigo-400 font-mono font-bold rounded-lg transition-all text-[11px] cursor-pointer shrink-0 border border-indigo-800/30"
-          id="btn_autofill_preset"
-        >
-          Autofill StellarTech Template
-        </button>
-      </div>
-
-      {/* Main Questionnaire Card */}
-      <div className="bg-zinc-900/80 border border-indigo-950/60 rounded-2xl shadow-2xl relative overflow-hidden flex flex-col">
-        
-        {/* Progress header tracking */}
-        <div className="bg-zinc-950 px-6 py-4 border-b border-indigo-950/50 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-950/80 border border-indigo-800 flex items-center justify-center">
-              <span className="text-indigo-300 font-mono font-bold text-xs">{step}</span>
+    <div className="max-w-3xl mx-auto my-4 sm:my-8 px-1 sm:px-4 animate-fade-in-up">
+      <Card accent className="border-primary-500/20 shadow-2xl shadow-primary-500/5 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-primary-500/3 to-transparent" />
+        <div className="bg-surface-900/90 px-6 py-4 border-b border-surface-700/30 flex items-center justify-between gap-4 relative">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center shadow-lg shadow-primary-500/30">
+              <span className="text-white font-mono font-bold text-sm">{step}</span>
             </div>
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 font-mono">Step {step} of {totalSteps}</h2>
-              <span className="text-[11px] text-zinc-500 font-mono">Calibrating CFO Real-Time Baseline Parameters</span>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-surface-400 font-mono">
+                {step === 1 && 'Company Profile'}
+                {step === 2 && 'Revenue & Income'}
+                {step === 3 && 'Expenses & Costs'}
+                {step === 4 && 'Cash & Economics'}
+                {step === 5 && 'Confirmation'}
+              </h2>
+              <p className="text-[9px] text-surface-500 font-mono">Step {step} of {totalSteps}</p>
             </div>
           </div>
-          
-          {/* Visual step indicators bar */}
           <div className="flex gap-1">
             {Array.from({ length: totalSteps }).map((_, i) => (
-              <div 
-                key={i} 
-                className={`h-1.5 w-6 rounded-full transition-all duration-300 ${
-                  i < step ? 'bg-indigo-500' : 'bg-zinc-800'
-                }`}
-              />
+              <div key={i} className={`h-1.5 w-5 sm:w-8 rounded-full transition-all duration-300 ${i < step ? 'bg-gradient-to-r from-primary-500 to-accent-500' : 'bg-surface-800'}`} />
             ))}
           </div>
         </div>
 
-        {/* Dynamic Card Content step viewport */}
-        <div className="p-6 sm:p-8 flex-1 min-h-[300px]">
-          
-          {/* STEP 1: IDENTITY & BASIC PROFILE */}
+        <div className="p-5 sm:p-8 min-h-[340px] relative">
           {step === 1 && (
-            <div className="space-y-6 animate-in fade-in duration-200" id="onboarding_step_1">
-              <div>
-                <h3 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-indigo-400" />
-                  What enterprise do we represent?
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">Specify your corporate identification details to customized AI CFO digital reporting.</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider">Company Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={formValues.companyName}
-                    onChange={(e) => setFormValues({ ...formValues, companyName: e.target.value })}
-                    placeholder="e.g., StellarTech Solutions Inc."
-                    className="w-full bg-zinc-950 border border-zinc-800 text-white p-3 rounded-xl focus:border-indigo-500 focus:outline-none text-xs"
-                    id="input_company_name"
-                  />
+            <div className="space-y-5">
+              <div><h3 className="text-lg font-semibold text-white font-display tracking-tight flex items-center gap-2"><Building2 className="w-5 h-5 text-primary-400" /> Tell us about your company</h3><p className="text-xs text-surface-400 mt-1">We need real data to build your financial twin — no assumptions.</p></div>
+              <div className="space-y-4">
+                <Input label="Company Name" placeholder="e.g., Acme Corp" value={f.companyName} onChange={(e) => update('companyName', e.target.value)} error={errors.companyName} icon={<Building2 className="w-4 h-4" />} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5"><Label>Industry</Label><Select value={f.industry} onValueChange={(v) => update('industry', v)}><SelectTrigger className={errors.industry ? 'border-danger/50' : ''}><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{INDUSTRIES.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent></Select>{errors.industry && <p className="text-[10px] text-danger font-mono">{errors.industry}</p>}</div>
+                  <div className="space-y-1.5"><Label>Business Stage</Label><Select value={f.stage} onValueChange={(v) => update('stage', v)}><SelectTrigger className={errors.stage ? 'border-danger/50' : ''}><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{STAGES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>{errors.stage && <p className="text-[10px] text-danger font-mono">{errors.stage}</p>}</div>
                 </div>
-
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider">Industry / Vertical</label>
-                  <input
-                    type="text"
-                    required
-                    value={formValues.industry}
-                    onChange={(e) => setFormValues({ ...formValues, industry: e.target.value })}
-                    placeholder="e.g., B2B SaaS & IoT Devices"
-                    className="w-full bg-zinc-950 border border-zinc-800 text-white p-3 rounded-xl focus:border-indigo-500 focus:outline-none text-xs"
-                    id="input_industry"
-                  />
-                </div>
-
-                <div className="space-y-1.5 col-span-2 sm:col-span-1">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider">Active Headcount (FTEs)</label>
-                  <div className="relative">
-                    <Users className="absolute left-3 top-3 w-4 h-4 text-zinc-500" />
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={formValues.headcount || ''}
-                      onChange={(e) => setFormValues({ ...formValues, headcount: Math.max(1, parseInt(e.target.value) || 0) })}
-                      placeholder="e.g., 42"
-                      className="w-full bg-zinc-950 border border-zinc-800 text-white pl-10 pr-3 py-3 rounded-xl focus:border-indigo-500 focus:outline-none font-mono text-xs"
-                      id="input_headcount"
-                    />
-                  </div>
-                </div>
+                <Input label="Full-time Employees" type="number" min="1" placeholder="e.g., 15" value={f.headcount ?? ''} onChange={(e) => update('headcount', e.target.value ? Math.max(1, +e.target.value) : null)} error={errors.headcount} icon={<Users className="w-4 h-4" />} />
               </div>
-
-              {/* Suggestions Helper */}
-              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-850/60 mt-4 text-[11px] text-zinc-500 flex gap-2">
-                <HelpCircle className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
-                <span>
-                  The company context immediately guides our Copilot chat model. Providing complete real-world configurations maximizes the precision of tactical insights.
-                </span>
-              </div>
+              <div className="bg-surface-900/60 border border-surface-700/30 p-3.5 rounded-xl flex gap-2.5 text-[11px] text-surface-400"><HelpCircle className="w-4 h-4 text-primary-400 shrink-0 mt-0.5" /><span>These details calibrate every insight and recommendation. Accurate inputs mean a more relevant AI-powered financial twin.</span></div>
             </div>
           )}
 
-          {/* STEP 2: REVENUE / INFLOWS */}
           {step === 2 && (
-            <div className="space-y-6 animate-in fade-in duration-200" id="onboarding_step_2">
-              <div>
-                <h3 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-indigo-400" />
-                  What are your core monthly Cash Inflows?
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">Provide your total actual gross monthly revenue base. We will automatically map standard digital components.</p>
-              </div>
-
+            <div className="space-y-5">
+              <div><h3 className="text-lg font-semibold text-white font-display tracking-tight flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-400" /> What does your revenue look like?</h3><p className="text-xs text-surface-400 mt-1">Your actual income — not estimates. This drives every projection.</p></div>
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block">Total Monthly Inflows ($)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-3.5 text-zinc-500 font-bold font-mono">$</span>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={formValues.revenue || ''}
-                      onChange={(e) => setFormValues({ ...formValues, revenue: Math.max(0, parseInt(e.target.value) || 0) })}
-                      placeholder="e.g., 1250000"
-                      className="w-full bg-zinc-950 border border-zinc-800 text-white pl-8 pr-4 py-3.5 rounded-xl focus:border-indigo-500 focus:outline-none font-mono text-xs"
-                      id="input_monthly_revenue"
-                    />
-                  </div>
-                  {formValues.revenue > 0 && (
-                    <span className="text-[10px] text-indigo-400 font-mono mt-1 block">
-                      Equivalent to: {formatCurrency(formValues.revenue * 12)} Annual Recurring Rate (ARR)
-                    </span>
-                  )}
+                <div className="space-y-1.5"><Label>Revenue Model</Label><Select value={f.revenueType} onValueChange={(v) => update('revenueType', v)}><SelectTrigger className={errors.revenueType ? 'border-danger/50' : ''}><SelectValue placeholder="How do you make money?" /></SelectTrigger><SelectContent>{REVENUE_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select>{errors.revenueType && <p className="text-[10px] text-danger font-mono">{errors.revenueType}</p>}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input label="Monthly Revenue ($)" type="number" min="1" placeholder="e.g., 250000" value={f.revenue ?? ''} onChange={(e) => update('revenue', e.target.value ? Math.max(0, +e.target.value) : null)} error={errors.revenue} prefix="$" />
+                  <Input label="Recurring Revenue %" type="number" min="0" max="100" placeholder="e.g., 70" value={f.recurringPct ?? ''} onChange={(e) => update('recurringPct', e.target.value !== '' ? Math.min(100, Math.max(0, +e.target.value)) : null)} error={errors.recurringPct} icon={<BarChart3 className="w-4 h-4" />} hint="0-100%" />
                 </div>
-
-                <div className="border border-indigo-950 bg-zinc-950 p-4 rounded-xl space-y-4">
-                  <div className="border-b border-zinc-800 pb-2 flex justify-between items-center text-[11px] font-mono">
-                    <span className="text-zinc-400 font-sans uppercase font-semibold">Proportional Stream Diagnostics (Default Multipliers)</span>
-                    <span className="text-indigo-400">Total: 100%</span>
-                  </div>
-
-                  <div className="space-y-3 font-sans text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-zinc-400">SaaS Platform core subscriptions:</span>
-                      <span className="font-mono text-zinc-350">{rSaaS}% ({formatCurrency(formValues.revenue * (rSaaS / 100))})</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-zinc-400">Hardware Telemetry licenses:</span>
-                      <span className="font-mono text-zinc-350">{rIoT}% ({formatCurrency(formValues.revenue * (rIoT / 100))})</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-zinc-400">Advisory Setup & implementation fees:</span>
-                      <span className="font-mono text-zinc-350">{rServices}% ({formatCurrency(formValues.revenue * (rServices / 100))})</span>
-                    </div>
-                  </div>
-                </div>
+                <Input label="Monthly Growth Rate (% MoM)" type="number" placeholder="e.g., 5" value={f.revGrowth ?? ''} onChange={(e) => update('revGrowth', e.target.value !== '' ? +e.target.value : null)} icon={<TrendingUp className="w-4 h-4" />} />
               </div>
-            </div>
-          )}
-
-          {/* STEP 3: DIRECT OPERATING COST (EXPENDITURES) */}
-          {step === 3 && (
-            <div className="space-y-6 animate-in fade-in duration-200" id="onboarding_step_3">
-              <div>
-                <h3 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                  <Briefcase className="w-5 h-5 text-violet-400" />
-                  What are your core monthly Outflows (COGS / OPEX)?
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">Configure your corporate monthly expenses. Balanced spending ratios ensure strategic stability limits.</p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block">Total Monthly Expenses ($)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-3.5 text-zinc-500 font-bold font-mono">$</span>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={formValues.expenses || ''}
-                      onChange={(e) => setFormValues({ ...formValues, expenses: Math.max(0, parseInt(e.target.value) || 0) })}
-                      placeholder="e.g., 950000"
-                      className="w-full bg-zinc-950 border border-zinc-800 text-white pl-8 pr-4 py-3.5 rounded-xl focus:border-indigo-500 focus:outline-none font-mono text-xs"
-                      id="input_monthly_expenses"
-                    />
-                  </div>
-                  {formValues.revenue > 0 && (
-                    <div className="flex justify-between items-center text-[10px] font-mono mt-1">
-                      <span className="text-zinc-500">Gross Monthly Cash Balance:</span>
-                      <span className={formValues.revenue >= formValues.expenses ? 'text-indigo-400' : 'text-amber-500'}>
-                        {formatCurrency(formValues.revenue - formValues.expenses)} / mo
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="border border-indigo-950 bg-zinc-950 p-4 rounded-xl space-y-4">
-                  <div className="border-b border-zinc-800 pb-2 flex justify-between items-center text-[11px] font-mono">
-                    <span className="text-zinc-400 font-sans uppercase font-semibold">Standard Expenditure Allocations</span>
-                    <span className="text-violet-400">Total: 100%</span>
-                  </div>
-
-                  <div className="space-y-3 font-sans text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-zinc-400">Total Wages & core talent payroll:</span>
-                      <span className="font-mono text-zinc-350">{ePayroll}% ({formatCurrency(formValues.expenses * (ePayroll / 100))})</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-zinc-400">Cloud Infrastructure (AWS/Compute/Tech/GCP):</span>
-                      <span className="font-mono text-zinc-350">{eCloud}% ({formatCurrency(formValues.expenses * (eCloud / 100))})</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-zinc-400">Ad & sales acquisitions campaigns:</span>
-                      <span className="font-mono text-zinc-350">{eMarketing}% ({formatCurrency(formValues.expenses * (eMarketing / 100))})</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-zinc-400">Office rental & auxiliary admin cost:</span>
-                      <span className="font-mono text-zinc-350">{eRent}% ({formatCurrency(formValues.expenses * (eRent / 100))})</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: SALES METRICS & STRATEGIC RESERVES */}
-          {step === 4 && (
-            <div className="space-y-6 animate-in fade-in duration-200" id="onboarding_step_4">
-              <div>
-                <h3 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                  <Target className="w-5 h-5 text-indigo-400" />
-                  What are your Performance Indicators & Reserves?
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">Configure your liquid business runway and unit economics ratios.</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                
-                {/* Cash reserves */}
-                <div className="space-y-1.5 col-span-2">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider">Liquid Cash Reserves ($)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-3 text-zinc-500 font-bold font-mono">$</span>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      value={formValues.cashOnHand || ''}
-                      onChange={(e) => setFormValues({ ...formValues, cashOnHand: Math.max(0, parseInt(e.target.value) || 0) })}
-                      placeholder="e.g., 3400000"
-                      className="w-full bg-zinc-950 border border-zinc-800 text-white pl-8 pr-3 py-3 rounded-xl focus:border-indigo-500 focus:outline-none font-mono text-xs"
-                      id="input_cash_on_hand"
-                    />
-                  </div>
-                  {formValues.expenses > 0 && (
-                    <span className="text-[10px] text-zinc-500 font-mono mt-1 block">
-                      Currently covers approximately <strong className="text-indigo-400 font-sans">{(formValues.cashOnHand / formValues.expenses).toFixed(1)} months</strong> of continuous runway
-                    </span>
-                  )}
-                </div>
-
-                {/* CAC */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider">Average CAC ($)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-3 text-zinc-500 font-bold font-mono">$</span>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={formValues.cac || ''}
-                      onChange={(e) => setFormValues({ ...formValues, cac: Math.max(1, parseInt(e.target.value) || 0) })}
-                      placeholder="e.g., 1200"
-                      className="w-full bg-zinc-950 border border-zinc-800 text-white pl-8 pr-3 py-3 rounded-xl focus:border-indigo-500 focus:outline-none font-mono text-xs"
-                      id="input_cac"
-                    />
-                  </div>
-                </div>
-
-                {/* LTV */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider">Projected LTV ($)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-3 text-zinc-500 font-bold font-mono">$</span>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={formValues.ltv || ''}
-                      onChange={(e) => setFormValues({ ...formValues, ltv: Math.max(1, parseInt(e.target.value) || 0) })}
-                      placeholder="e.g., 6500"
-                      className="w-full bg-zinc-950 border border-zinc-800 text-white pl-8 pr-3 py-3 rounded-xl focus:border-indigo-500 focus:outline-none font-mono text-xs"
-                      id="input_ltv"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {formValues.cac > 0 && formValues.ltv > 0 && (
-                <div className="bg-zinc-950 p-4 rounded-xl border border-indigo-950/40 text-xs flex justify-between items-center font-mono">
-                  <span className="text-zinc-500">LTV to CAC Ratio:</span>
-                  <span className={`font-bold ${(formValues.ltv / formValues.cac) >= 3 ? 'text-indigo-400' : 'text-amber-500'}`}>
-                    {(formValues.ltv / formValues.cac).toFixed(1)}x
-                  </span>
+              {f.revenue && f.recurringPct !== null && (
+                <div className="bg-surface-900/60 border border-emerald-900/30 rounded-xl p-4 text-xs font-mono space-y-1.5">
+                  <div className="flex justify-between text-surface-400"><span>Annualized (ARR):</span><span className="text-emerald-400 font-bold">{formatCurrency(f.revenue * 12)}</span></div>
+                  <div className="flex justify-between text-surface-400"><span>Recurring:</span><span className="text-white">{formatCurrency(f.revenue * f.recurringPct / 100)}/mo</span></div>
+                  <div className="flex justify-between text-surface-400"><span>Variable:</span><span className="text-white">{formatCurrency(f.revenue * (100 - f.recurringPct) / 100)}/mo</span></div>
                 </div>
               )}
             </div>
           )}
 
-          {/* STEP 5: FINAL CONFIRMATION & REVIEW */}
-          {step === 5 && (
-            <div className="space-y-6 animate-in fade-in duration-200" id="onboarding_step_5">
-              <div className="text-center space-y-2">
-                <CheckCircle className="w-10 h-10 text-indigo-400 mx-auto" />
-                <h3 className="text-lg font-semibold text-white tracking-tight">Your Digital Twin is calibrated and ready!</h3>
-                <p className="text-xs text-zinc-400">Review your customized baseline ledger metrics below. Click complete to start.</p>
-              </div>
-
-              <div className="bg-zinc-950 border border-indigo-950/40 rounded-xl p-5 divide-y divide-zinc-850 text-xs">
-                {/* Section identity */}
-                <div className="py-2.5 flex justify-between items-center">
-                  <span className="text-zinc-400">Company Name / Segment</span>
-                  <span className="text-white font-semibold font-mono">{formValues.companyName} ({formValues.industry})</span>
-                </div>
-
-                {/* Monthly streams */}
-                <div className="py-2.5 flex justify-between items-center">
-                  <span className="text-zinc-400">Monthly Revenue Inflow</span>
-                  <span className="text-indigo-400 font-bold font-mono">{formatCurrency(formValues.revenue)} / mo</span>
-                </div>
-
-                {/* Operating scale */}
-                <div className="py-2.5 flex justify-between items-center">
-                  <span className="text-zinc-400">Monthly Operating Expenses</span>
-                  <span className="text-violet-400 font-bold font-mono">{formatCurrency(formValues.expenses)} / mo</span>
-                </div>
-
-                {/* Net residual */}
-                <div className="py-2.5 flex justify-between items-center">
-                  <span className="text-zinc-400">Current Monthly Profit Margin</span>
-                  <span className="text-indigo-400 font-bold font-mono">
-                    {formatCurrency(formValues.revenue - formValues.expenses)} ({(((formValues.revenue - formValues.expenses) / (formValues.revenue || 1)) * 100).toFixed(1)}%)
-                  </span>
-                </div>
-
-                {/* Liquid asset reserves */}
-                <div className="py-2.5 flex justify-between items-center">
-                  <span className="text-zinc-400">Cash-on-Hand Buffer Runway</span>
-                  <span className="text-white font-semibold font-mono">
-                    {formatCurrency(formValues.cashOnHand)} ({formValues.expenses > 0 ? (formValues.cashOnHand / formValues.expenses).toFixed(1) : 12} months duration)
-                  </span>
-                </div>
-
-                {/* Core units ratios */}
-                <div className="py-2.5 flex justify-between items-center">
-                  <span className="text-zinc-400">CAC / LTV Units Diagnostics</span>
-                  <span className="text-zinc-300 font-mono">CAC: {formatCurrency(formValues.cac)} | LTV: {formatCurrency(formValues.ltv)} (~{(formValues.ltv / (formValues.cac || 1)).toFixed(1)}x)</span>
+          {step === 3 && (
+            <div className="space-y-5">
+              <div><h3 className="text-lg font-semibold text-white font-display tracking-tight flex items-center gap-2"><Receipt className="w-5 h-5 text-amber-400" /> What are your monthly expenses?</h3><p className="text-xs text-surface-400 mt-1">Real costs — we calculate your burn rate and runway from these.</p></div>
+              <div className="space-y-4">
+                <Input label="Monthly Operating Expenses ($)" type="number" min="1" placeholder="e.g., 180000" value={f.expenses ?? ''} onChange={(e) => update('expenses', e.target.value ? Math.max(0, +e.target.value) : null)} error={errors.expenses} prefix="$" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5"><Label>Biggest Cost</Label><Select value={f.costDriver} onValueChange={(v) => update('costDriver', v)}><SelectTrigger className={errors.costDriver ? 'border-danger/50' : ''}><SelectValue placeholder="Select..." /></SelectTrigger><SelectContent>{COST_DRIVERS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent></Select>{errors.costDriver && <p className="text-[10px] text-danger font-mono">{errors.costDriver}</p>}</div>
+                  <Input label="Payroll % of Expenses" type="number" min="0" max="100" placeholder="e.g., 55" value={f.payrollPct ?? ''} onChange={(e) => update('payrollPct', e.target.value !== '' ? Math.min(100, Math.max(0, +e.target.value)) : null)} error={errors.payrollPct} icon={<UserCheck className="w-4 h-4" />} hint="0-100%" />
                 </div>
               </div>
-
-              <div className="text-[10px] text-zinc-500 font-mono text-center">
-                * Note: Model metrics and warning triggers will adjust automatically based on these inputs.
-              </div>
+              {f.revenue && f.expenses && (
+                <div className="bg-surface-900/60 border border-amber-900/30 rounded-xl p-4 text-xs font-mono space-y-1.5">
+                  <div className="flex justify-between text-surface-400"><span>Gross Margin:</span><span className={scores.margin && +scores.margin > 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{scores.margin}%</span></div>
+                  <div className="flex justify-between text-surface-400"><span>Monthly Profit/Loss:</span><span className={scores.profit >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{formatCurrency(scores.profit)}/mo</span></div>
+                </div>
+              )}
             </div>
           )}
 
+          {step === 4 && (
+            <div className="space-y-5">
+              <div><h3 className="text-lg font-semibold text-white font-display tracking-tight flex items-center gap-2"><Wallet className="w-5 h-5 text-cyan-400" /> Cash position & customer economics</h3><p className="text-xs text-surface-400 mt-1">These determine your financial health and runway projections.</p></div>
+              <div className="space-y-4">
+                <Input label="Cash & Liquid Reserves ($)" type="number" min="0" placeholder="e.g., 2500000" value={f.cashOnHand ?? ''} onChange={(e) => update('cashOnHand', e.target.value !== '' ? Math.max(0, +e.target.value) : null)} error={errors.cashOnHand} icon={<PiggyBank className="w-4 h-4" />} />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Input label="CAC ($)" type="number" min="1" placeholder="e.g., 1200" value={f.cac ?? ''} onChange={(e) => update('cac', e.target.value ? Math.max(1, +e.target.value) : null)} error={errors.cac} icon={<Target className="w-4 h-4" />} />
+                  <Input label="LTV ($)" type="number" min="1" placeholder="e.g., 6500" value={f.ltv ?? ''} onChange={(e) => update('ltv', e.target.value ? Math.max(1, +e.target.value) : null)} error={errors.ltv} icon={<Banknote className="w-4 h-4" />} />
+                  <Input label="Contract (months)" type="number" min="1" placeholder="e.g., 12" value={f.contractMonths ?? ''} onChange={(e) => update('contractMonths', e.target.value ? Math.max(1, +e.target.value) : null)} error={errors.contractMonths} icon={<CalendarDays className="w-4 h-4" />} />
+                </div>
+              </div>
+              {f.cac && f.ltv && f.cashOnHand !== null && f.expenses && (
+                <div className="bg-surface-900/60 border border-cyan-900/30 rounded-xl p-4 text-xs font-mono space-y-1.5">
+                  <div className="flex justify-between text-surface-400"><span>LTV / CAC:</span><span className={+scores.ltvRatio >= 3 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>{scores.ltvRatio}x</span></div>
+                  <div className="flex justify-between text-surface-400"><span>Runway:</span><span className={+scores.runway >= 6 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>{scores.runway} months</span></div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 5 && (
+            <div className="space-y-5">
+              <div className="text-center space-y-1"><CheckCircle className="w-10 h-10 text-primary-400 mx-auto" /><h3 className="text-lg font-semibold text-white font-display tracking-tight">Your Financial Twin Profile</h3><p className="text-xs text-surface-400">Built from <strong className="text-white">your actual data</strong>. Review before launching.</p></div>
+
+              <div className="bg-surface-900/60 border border-surface-700/30 rounded-xl divide-y divide-surface-700/20 text-xs">
+                <div className="p-4 space-y-2"><h4 className="text-[9px] text-primary-400 uppercase font-mono font-bold tracking-wider">Company</h4>
+                  <div className="grid grid-cols-2 gap-1.5"><span><span className="text-surface-500">Name:</span> <span className="text-white">{f.companyName}</span></span><span><span className="text-surface-500">Industry:</span> <span className="text-white">{f.industry}</span></span><span><span className="text-surface-500">Stage:</span> <span className="text-white">{f.stage}</span></span><span><span className="text-surface-500">Team:</span> <span className="text-white">{f.headcount}</span></span></div></div>
+                <div className="p-4 space-y-2"><h4 className="text-[9px] text-emerald-400 uppercase font-mono font-bold tracking-wider">Revenue</h4>
+                  <div className="grid grid-cols-2 gap-1.5"><span><span className="text-surface-500">Monthly:</span> <span className="text-emerald-400 font-bold font-mono">{formatCurrency(f.revenue || 0)}</span></span><span><span className="text-surface-500">ARR:</span> <span className="text-emerald-400 font-bold font-mono">{formatCurrency((f.revenue || 0) * 12)}</span></span><span><span className="text-surface-500">Model:</span> <span className="text-white">{f.revenueType}</span></span><span><span className="text-surface-500">Recurring:</span> <span className="text-white">{f.recurringPct}%</span></span></div></div>
+                <div className="p-4 space-y-2"><h4 className="text-[9px] text-amber-400 uppercase font-mono font-bold tracking-wider">Expenses</h4>
+                  <div className="grid grid-cols-2 gap-1.5"><span><span className="text-surface-500">Monthly:</span> <span className="text-amber-400 font-bold font-mono">{formatCurrency(f.expenses || 0)}</span></span><span><span className="text-surface-500">Margin:</span> <span className={+scores.margin >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{scores.margin}%</span></span><span><span className="text-surface-500">Top Cost:</span> <span className="text-white">{f.costDriver}</span></span><span><span className="text-surface-500">Payroll:</span> <span className="text-white">{f.payrollPct}%</span></span></div></div>
+                <div className="p-4 space-y-2"><h4 className="text-[9px] text-cyan-400 uppercase font-mono font-bold tracking-wider">Cash & Metrics</h4>
+                  <div className="grid grid-cols-2 gap-1.5"><span><span className="text-surface-500">Cash:</span> <span className="text-white font-mono">{formatCurrency(f.cashOnHand || 0)}</span></span><span><span className="text-surface-500">Runway:</span> <span className="text-white">{scores.runway}mo</span></span><span><span className="text-surface-500">CAC:</span> <span className="text-white font-mono">{formatCurrency(f.cac || 0)}</span></span><span><span className="text-surface-500">LTV/CAC:</span> <span className="text-white font-semibold">{scores.ltvRatio}x</span></span></div></div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-surface-900/60 border border-surface-700/30 p-4 rounded-xl text-center"><span className="text-[9px] text-surface-500 uppercase font-mono tracking-wider">Health</span><span className="block text-2xl font-bold text-primary-400 font-display mt-1">{scores.health}</span><span className="text-[10px] text-surface-500 font-mono">/ 100</span><Progress value={scores.health} className="mt-2" variant={scores.health >= 70 ? 'success' : scores.health >= 40 ? 'warning' : 'danger'} /></div>
+                <div className="bg-surface-900/60 border border-surface-700/30 p-4 rounded-xl text-center"><span className="text-[9px] text-surface-500 uppercase font-mono tracking-wider">Growth</span><span className="block text-2xl font-bold text-accent-400 font-display mt-1">{scores.growth}</span><span className="text-[10px] text-surface-500 font-mono">/ 100</span><Progress value={scores.growth} className="mt-2" variant={scores.growth >= 70 ? 'success' : scores.growth >= 40 ? 'warning' : 'danger'} /></div>
+              </div>
+
+              <div className="flex items-start gap-2 p-3 bg-amber-950/10 border border-amber-900/30 rounded-xl text-[10px] text-amber-300"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><span>These scores derive from your real data. Lower scores mean more improvement opportunities — that is the point.</span></div>
+            </div>
+          )}
         </div>
 
-        {/* Footer actions navigator bar */}
-        <div className="bg-zinc-950 p-4 border-t border-zinc-850 flex justify-between items-center">
-          <button
-            type="button"
-            disabled={step === 1}
-            onClick={handlePrevStep}
-            className={`flex items-center gap-1.5 px-4   py-2 rounded-xl text-xs font-mono border transition-all ${
-              step === 1 
-                ? 'opacity-30 border-zinc-800 text-zinc-650 cursor-not-allowed' 
-                : 'border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-900 cursor-pointer'
-            }`}
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Previous</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleNextStep}
-            className="flex items-center gap-1.5 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl text-xs font-mono transition-all cursor-pointer shadow-md shadow-indigo-950/30"
-            id="btn_onboarding_next"
-          >
-            <span>{step === totalSteps ? 'Complete Alignment & Enter Twin Workspace' : 'Continue'}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+        <div className="bg-surface-900/90 p-4 border-t border-surface-700/30 flex justify-between items-center relative">
+          <Button variant="ghost" size="sm" disabled={step === 1} onClick={() => { setStep(s => s - 1); setErrors({}); }}>
+            <ArrowLeft className="w-3.5 h-3.5" /> Previous
+          </Button>
+          {step < totalSteps ? (
+            <Button onClick={next} size="sm">
+              {step === totalSteps - 1 ? 'Review Profile' : 'Continue'}
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          ) : (
+            <Button onClick={next} size="lg" variant="primary" className="bg-gradient-to-r from-primary-500 to-accent-500 hover:from-primary-400 hover:to-accent-400">
+              <Sparkles className="w-4 h-4" /> Launch Financial Twin
+            </Button>
+          )}
         </div>
-
-      </div>
+      </Card>
     </div>
   );
 }

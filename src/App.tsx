@@ -1,21 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  Building, 
-  Activity, 
-  Bot, 
-  Sliders, 
-  ShieldAlert, 
-  Network, 
-  Brain, 
-  LayoutDashboard,
-  MessageSquare,
-  Sparkles,
-  Info
+import {
+  LayoutDashboard, Network, Sliders, ShieldAlert, Brain, Bot, Building2, Sparkles, Menu, X
 } from 'lucide-react';
+import { Toaster } from 'sonner';
 import { baseFinancialData } from './data';
 import { SimulationScenario } from './types';
 
-// Importing child dashboard components
 import ExecutiveDashboard from './components/ExecutiveDashboard';
 import DigitalTwinDashboard from './components/DigitalTwinDashboard';
 import SimulationDashboard from './components/SimulationDashboard';
@@ -24,342 +14,177 @@ import AIInsightsDashboard from './components/AIInsightsDashboard';
 import FinancialCopilot from './components/FinancialCopilot';
 import OnboardingQuestionnaire from './components/OnboardingQuestionnaire';
 
-type DashboardTab = 'executive' | 'twin' | 'simulation' | 'risks' | 'insights';
+type Tab = 'executive' | 'twin' | 'simulation' | 'risks' | 'insights';
+
+const NAV_ITEMS: { key: Tab; label: string; icon: React.ElementType }[] = [
+  { key: 'executive', label: 'Overview', icon: LayoutDashboard },
+  { key: 'twin', label: 'Twin Map', icon: Network },
+  { key: 'simulation', label: 'Simulator', icon: Sliders },
+  { key: 'risks', label: 'Risks', icon: ShieldAlert },
+  { key: 'insights', label: 'Advisory', icon: Brain },
+];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('executive');
-  
-  // Base core financial parameters (StellarTech Solutions default values)
+  const [activeTab, setActiveTab] = useState<Tab>('executive');
   const [financials, setFinancials] = useState(baseFinancialData);
+  const [onboarded, setOnboarded] = useState(false);
+  const [showCopilot, setShowCopilot] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [preloadedTrigger, setPreloadedTrigger] = useState<any>(null);
 
-  // Tracks if onboarding parameters have been calibrated first
-  const [hasOnboardingCompleted, setHasOnboardingCompleted] = useState<boolean>(false);
-
-  // Helper to scale monthly trends proportionally when baseline figures change
-  const scaleMonthlyTrend = (
-    oldTrend: any[],
-    oldRev: number,
-    newRev: number,
-    oldExp: number,
-    newExp: number
-  ) => {
-    const revRatio = oldRev > 0 ? (newRev / oldRev) : 1;
-    const expRatio = oldExp > 0 ? (newExp / oldExp) : 1;
-    return oldTrend.map((t) => {
-      const monthRev = Math.round(t.revenue * revRatio);
-      const monthExp = Math.round(t.expenses * expRatio);
-      const monthProf = monthRev - monthExp;
-      const monthCashFlow = Math.round(t.cashFlow * (newRev / (oldRev || 1)));
-      return {
-        ...t,
-        revenue: monthRev,
-        expenses: monthExp,
-        profit: monthProf,
-        cashFlow: monthCashFlow
-      };
-    });
+  const scaleTrend = (oldTrend: any[], oldRev: number, newRev: number, oldExp: number, newExp: number) => {
+    const rr = oldRev > 0 ? newRev / oldRev : 1;
+    const er = oldExp > 0 ? newExp / oldExp : 1;
+    return oldTrend.map((t) => ({
+      ...t,
+      revenue: Math.round(t.revenue * rr),
+      expenses: Math.round(t.expenses * er),
+      profit: Math.round(t.revenue * rr - t.expenses * er),
+      cashFlow: Math.round(t.cashFlow * (newRev / (oldRev || 1))),
+    }));
   };
-  
-  // State to manage state transfers from Insights to Simulator
-  const [simulatorPreloadedTrigger, setSimulatorPreloadedTrigger] = useState<{
-    id: string;
-    title: string;
-    desc: string;
-    rev: number;
-    exp: number;
-    hc: number;
-    mkt: number;
-    cash: number;
-  } | null>(null);
 
-  // Toggle state of the Right Copilot Sidebar
-  const [showCopilot, setShowCopilot] = useState<boolean>(true);
-
-  // Trigger from strategic insights page shortcut
-  const handleShortcutToSimulate = (
-    title: string,
-    desc: string,
-    revMul: number,
-    expMul: number,
-    hcMod: number,
-    mktMod: number,
-    cashMod: number
-  ) => {
-    // Stage parameters
-    setSimulatorPreloadedTrigger({
-      id: `shortcut_${Date.now()}`,
-      title,
-      desc,
-      rev: revMul,
-      exp: expMul,
-      hc: hcMod,
-      mkt: mktMod,
-      cash: cashMod
-    });
-    
-    // Switch tab
+  const handleShortcut = (title: string, desc: string, rev: number, exp: number, hc: number, mkt: number, cash: number) => {
+    setPreloadedTrigger({ id: `sc_${Date.now()}`, title, desc, rev, exp, hc, mkt, cash });
     setActiveTab('simulation');
   };
 
-  const getTabLabel = (tab: DashboardTab) => {
-    switch(tab) {
-      case 'executive': return 'Executive Dashboard';
-      case 'twin': return 'Digital Twin Net';
-      case 'simulation': return 'Future Simulator';
-      case 'risks': return 'Risk Intelligence';
-      case 'insights': return 'AI Strategic Advisory';
-    }
-  };
-
-  if (!hasOnboardingCompleted) {
+  if (!onboarded) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans" id="onboarding_wrapper">
-        <header className="glass-panel border-b border-indigo-950/60 px-4 md:px-6 py-4 flex items-center justify-between sticky top-0 z-45 shrink-0 shadow-lg">
+      <div className="min-h-screen flex flex-col">
+        <header className="glass-panel-strong border-b border-primary-500/10 px-5 py-4 flex items-center justify-between sticky top-0 z-50 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-550 via-indigo-600 to-purple-500 p-0.5 flex items-center justify-center shadow-lg shadow-indigo-950/40">
-              <div className="w-full h-full bg-zinc-950 rounded-[10px] flex items-center justify-center">
-                <Network className="w-4 h-4 text-indigo-400" />
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-primary-500 via-primary-600 to-accent-500 p-[2px] shadow-lg shadow-primary-500/30">
+              <div className="w-full h-full rounded-2xl bg-surface-950 flex items-center justify-center">
+                <Network className="w-5 h-5 text-primary-400" />
               </div>
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold tracking-tight text-white font-display bg-gradient-to-r from-indigo-200 to-violet-300 bg-clip-text text-transparent">FinTwin AI</h1>
-                <span className="text-[9px] bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 px-1.5 py-0.5 rounded font-mono uppercase font-bold tracking-wider">Autonomous CFO</span>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-lg font-bold tracking-tight font-display gradient-text">FinTwin AI</h1>
+                <span className="text-[8px] bg-primary-500/10 text-primary-300 border border-primary-500/20 px-2 py-0.5 rounded-full font-mono uppercase font-bold tracking-wider">Autonomous CFO</span>
               </div>
-              <p className="text-[11px] text-zinc-400 font-mono tracking-wide">"Simulate Tomorrow. Decide Today."</p>
+              <p className="text-[10px] text-surface-500 font-mono">"Simulate Tomorrow. Decide Today."</p>
             </div>
           </div>
-          <div className="text-[10px] bg-indigo-950/60 border border-indigo-900/60 text-indigo-300 px-3 py-1.5 rounded-lg font-mono">
-            Setup Terminal Panel
+          <div className="text-[9px] bg-surface-800 border border-surface-700/60 text-surface-400 px-3 py-1.5 rounded-xl font-mono flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />
+            Setup Required
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto px-4 py-8 flex flex-col justify-center max-w-4xl mx-auto w-full">
-          <div className="text-center max-w-xl mx-auto mb-6 space-y-2">
-            <span className="text-[10px] font-mono text-indigo-300 uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-950 border border-indigo-800/70">Simulation Core Alignment</span>
-            <h2 className="text-2xl font-bold text-white tracking-tight font-display">Provide Your Corporate Financial Scope</h2>
-            <p className="text-xs text-zinc-400">
-              Answer the following quick questions regarding your company to calibrate your dynamic digital twin ecosystem. All figures, live trends, and simulations will reflect your inputs.
-            </p>
+        <main className="flex-1 flex flex-col justify-center max-w-3xl mx-auto w-full px-4 py-12">
+          <div className="text-center mb-8 space-y-3 animate-fade-in-up">
+            <div className="inline-flex items-center gap-2 text-[10px] font-mono text-primary-400 uppercase font-bold tracking-wider px-3 py-1.5 rounded-full bg-primary-500/5 border border-primary-500/20">
+              <Sparkles className="w-3 h-3" /> Financial Twin Calibration
+            </div>
+            <h2 className="text-3xl font-bold text-white font-display tracking-tight">Configure Your Corporate Twin</h2>
+            <p className="text-sm text-surface-400 max-w-lg mx-auto">Answer a few questions about your business to build a dynamic, AI-powered digital twin. Every insight is personalized to <strong className="text-white">your real numbers</strong>.</p>
           </div>
 
-          <OnboardingQuestionnaire 
-            onComplete={(calibratedData) => {
-              setFinancials(calibratedData);
-              setHasOnboardingCompleted(true);
-            }} 
-            defaultData={baseFinancialData} 
-          />
+          <OnboardingQuestionnaire onComplete={(data) => { setFinancials(data); setOnboarded(true); }} />
         </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans" id="fintwin_app_root">
-      
-      {/* 1. Global Navigation Header */}
-      <header className="glass-panel border-b border-indigo-950/60 px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-45 shrink-0 shadow-lg">
-        
-        {/* Brand identity */}
+    <div className="min-h-screen flex flex-col">
+      <header className="glass-panel-strong border-b border-primary-500/10 px-4 lg:px-6 py-3 flex items-center justify-between gap-4 sticky top-0 z-50 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-550 via-indigo-600 to-purple-500 p-0.5 flex items-center justify-center shadow-lg shadow-indigo-950/40">
-            <div className="w-full h-full bg-zinc-950 rounded-[10px] flex items-center justify-center">
-              <Network className="w-4 h-4 text-indigo-400" />
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-accent-500 p-[2px] shadow-lg shadow-primary-500/25">
+            <div className="w-full h-full rounded-xl bg-surface-950 flex items-center justify-center">
+              <Network className="w-4 h-4 text-primary-400" />
             </div>
           </div>
-          <div>
+          <div className="hidden sm:block">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold tracking-tight text-white font-display bg-gradient-to-r from-indigo-200 to-violet-300 bg-clip-text text-transparent">FinTwin AI</h1>
-              <span className="text-[9px] bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 px-1.5 py-0.5 rounded font-mono uppercase font-bold tracking-wider">Autonomous CFO</span>
+              <h1 className="text-sm font-bold font-display gradient-text">FinTwin AI</h1>
+              <span className="text-[7px] bg-primary-500/10 text-primary-300 border border-primary-500/20 px-1.5 py-0.5 rounded-full font-mono uppercase font-bold">CFO</span>
             </div>
-            <p className="text-[11px] text-zinc-400 font-mono tracking-wide">"Simulate Tomorrow. Decide Today."</p>
           </div>
         </div>
 
-        {/* Corporate Scope Widget & Twin Tracker */}
-        <div className="flex items-center gap-3 bg-indigo-950/40 border border-indigo-900/40 p-2 rounded-xl text-xs">
-          <div className="p-1 rounded bg-zinc-900/60 text-zinc-400 border border-zinc-800">
-            <Building className="w-4 h-4 text-indigo-400" />
-          </div>
-          <div>
-            <span className="text-[9px] text-indigo-400 font-mono uppercase block tracking-wider font-semibold">ACTIVE CORPORATE TWIN</span>
-            <span className="font-semibold text-white tracking-tight">{financials.companyName}</span>
-          </div>
-          <div className="h-6 w-px bg-indigo-900/40 mx-1"></div>
-          <div className="flex items-center gap-1.5 pr-1.5">
-            <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse neon-glow-indigo"></span>
-            <span className="font-mono text-[9px] text-indigo-300 font-bold uppercase tracking-wider">Twin Synced</span>
-          </div>
-        </div>
+        <nav className="hidden md:flex items-center gap-1 bg-surface-900/80 border border-surface-700/30 rounded-2xl p-1">
+          {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[10px] font-mono font-semibold transition-all duration-200 ${
+                activeTab === key
+                  ? 'bg-gradient-to-r from-primary-500/20 to-accent-500/10 text-white shadow-sm'
+                  : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800/50'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+            </button>
+          ))}
+        </nav>
 
-        {/* Menu toggles */}
         <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-2 bg-surface-900/80 border border-surface-700/30 px-3 py-1.5 rounded-xl text-[9px] font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-surface-400">{financials.companyName}</span>
+          </div>
           <button
             onClick={() => setShowCopilot(!showCopilot)}
-            className={`px-3 py-1.5 rounded-lg border text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer ${
-              showCopilot 
-                ? 'bg-indigo-950/50 border-indigo-800/80 text-indigo-300' 
-                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+            className={`p-2 rounded-xl border transition-all ${
+              showCopilot
+                ? 'bg-primary-500/15 border-primary-500/30 text-primary-400'
+                : 'bg-surface-900 border-surface-700/30 text-surface-400 hover:text-white'
             }`}
           >
-            <Bot className="w-3.5 h-3.5" />
-            <span>Chat Advisor</span>
+            <Bot className="w-4 h-4" />
+          </button>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="md:hidden p-2 rounded-xl bg-surface-900 border border-surface-700/30 text-surface-400">
+            {sidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
         </div>
       </header>
 
-      {/* 2. Main Workspace Layout */}
-      <div className="flex-1 flex flex-col md:flex-row items-stretch min-h-0 overflow-hidden">
-        
-        {/* Navigation Sidebar Drawer */}
-        <nav className="w-full md:w-64 bg-zinc-950/80 md:border-r border-b md:border-b-0 border-indigo-955 border-indigo-950/40 p-4 shrink-0 flex flex-col justify-between overflow-y-auto">
-          <div className="space-y-6">
-            
-            {/* Navigation links stack */}
-            <div className="space-y-1.5">
-              <span className="text-[9px] uppercase font-mono tracking-wider font-bold text-indigo-400/80 pl-2">Twin Command Modules</span>
-              
-              <button
-                onClick={() => setActiveTab('executive')}
-                className={`w-full text-left py-2.5 px-3 rounded-lg text-xs font-medium transition-all flex items-center gap-2.5 cursor-pointer ${
-                  activeTab === 'executive'
-                    ? 'bg-gradient-to-r from-indigo-950/80 to-purple-950/40 text-white font-semibold border-l-2 border-indigo-550'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-indigo-950/10'
-                }`}
-              >
-                <LayoutDashboard className="w-4 h-4 text-indigo-400" />
-                <span>Executive Overview</span>
-              </button>
+      {/* Mobile nav */}
+      {sidebarOpen && (
+        <div className="md:hidden glass-panel-strong border-b border-surface-700/30 px-4 py-3 flex gap-1 overflow-x-auto">
+          {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => { setActiveTab(key); setSidebarOpen(false); }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-mono font-semibold whitespace-nowrap transition-all ${
+                activeTab === key ? 'bg-primary-500/20 text-white' : 'text-surface-400'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" /> {label}
+            </button>
+          ))}
+        </div>
+      )}
 
-              <button
-                onClick={() => setActiveTab('twin')}
-                className={`w-full text-left py-2.5 px-3 rounded-lg text-xs font-medium transition-all flex items-center gap-2.5 cursor-pointer ${
-                  activeTab === 'twin'
-                    ? 'bg-gradient-to-r from-indigo-950/80 to-purple-950/40 text-white font-semibold border-l-2 border-indigo-550'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-indigo-950/10'
-                }`}
-              >
-                <Network className="w-4 h-4 text-indigo-400" />
-                <span>Ecosystem Twin Map</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('simulation')}
-                className={`w-full text-left py-2.5 px-3 rounded-lg text-xs font-medium transition-all flex items-center gap-2.5 cursor-pointer ${
-                  activeTab === 'simulation'
-                    ? 'bg-gradient-to-r from-indigo-950/80 to-purple-950/40 text-white font-semibold border-l-2 border-indigo-550'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-indigo-950/10'
-                }`}
-              >
-                <Sliders className="w-4 h-4 text-indigo-400" />
-                <span>Future Simulator</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('risks')}
-                className={`w-full text-left py-2.5 px-3 rounded-lg text-xs font-medium transition-all flex items-center gap-2.5 cursor-pointer ${
-                  activeTab === 'risks'
-                    ? 'bg-gradient-to-r from-indigo-950/80 to-purple-950/40 text-white font-semibold border-l-2 border-indigo-550'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-indigo-950/10'
-                }`}
-              >
-                <ShieldAlert className="w-4 h-4 text-indigo-400" />
-                <span>Risk Intelligence</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('insights')}
-                className={`w-full text-left py-2.5 px-3 rounded-lg text-xs font-medium transition-all flex items-center gap-2.5 cursor-pointer ${
-                  activeTab === 'insights'
-                    ? 'bg-gradient-to-r from-indigo-950/80 to-purple-950/40 text-white font-semibold border-l-2 border-indigo-550'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-indigo-950/10'
-                }`}
-              >
-                <Brain className="w-4 h-4 text-indigo-400" />
-                <span>AI Strategic Advisory</span>
-              </button>
-            </div>
-
-            {/* Diagnostics details inside sidebar */}
-            <div className="hidden md:block bg-indigo-950/20 border border-indigo-900/30 p-3.5 rounded-xl space-y-2">
-              <span className="text-[9px] uppercase font-mono tracking-wider font-bold text-indigo-300 block">Ledger Profile</span>
-              <div className="space-y-1.5 font-mono text-[10px]">
-                <div className="flex justify-between">
-                  <span className="text-zinc-400 font-sans">Revenue Stream:</span>
-                  <span className="text-white font-semibold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(financials.revenue)}/mo</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400 font-sans">Op Expenses:</span>
-                  <span className="text-white font-semibold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(financials.expenses)}/mo</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400 font-sans">Net Cash:</span>
-                  <span className="text-white font-semibold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(financials.cashOnHand)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-400 font-sans">Operating Margin:</span>
-                  <span className="text-indigo-400 font-semibold font-mono">{((financials.profit / (financials.revenue || 1)) * 100).toFixed(1)}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Credits footer */}
-          <div className="pt-4 border-t border-zinc-900 hidden md:flex items-center gap-1.5 text-[9px] text-zinc-500 font-mono">
-            <span>FinTwin Platform v2.4</span>
-          </div>
-        </nav>
-
-        {/* Primary Views Viewport */}
-        <main className="flex-1 bg-zinc-950 p-4 md:p-6 overflow-y-auto space-y-6">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6">
           {activeTab === 'executive' && (
-            <ExecutiveDashboard 
-              data={financials} 
-              onUpdateFinancials={(updatedFields) => {
-                setFinancials((prev) => {
-                  const nextVal = { ...prev, ...updatedFields };
-                  nextVal.profit = nextVal.revenue - nextVal.expenses;
-                  nextVal.monthlyTrend = scaleMonthlyTrend(
-                    prev.monthlyTrend,
-                    prev.revenue,
-                    nextVal.revenue,
-                    prev.expenses,
-                    nextVal.expenses
-                  );
-                  return nextVal;
-                });
-              }}
-            />
+            <ExecutiveDashboard data={financials} onUpdateFinancials={(u) => setFinancials((p) => {
+              const n = { ...p, ...u, profit: (u.revenue ?? p.revenue) - (u.expenses ?? p.expenses) };
+              n.monthlyTrend = scaleTrend(p.monthlyTrend, p.revenue, n.revenue, p.expenses, n.expenses);
+              return n;
+            })} />
           )}
-
-          {activeTab === 'twin' && (
-            <DigitalTwinDashboard data={financials} />
-          )}
-
+          {activeTab === 'twin' && <DigitalTwinDashboard data={financials} />}
           {activeTab === 'simulation' && (
-            <SimulationDashboard 
+            <SimulationDashboard
               financials={financials}
-              preloadedTrigger={simulatorPreloadedTrigger}
-              onClearPreloadedTrigger={() => setSimulatorPreloadedTrigger(null)}
-              onCommitToLive={(simResult) => {
-                setFinancials((prev) => ({
-                  ...prev,
-                  revenue: simResult.projectedRevenue,
-                  expenses: simResult.projectedExpenses,
-                  profit: simResult.projectedProfit,
-                  cashOnHand: simResult.projectedCash,
-                  healthScore: simResult.projectedHealthScore,
-                  growthScore: simResult.projectedGrowthScore,
-                  monthlyTrend: scaleMonthlyTrend(
-                    prev.monthlyTrend,
-                    prev.revenue,
-                    simResult.projectedRevenue,
-                    prev.expenses,
-                    simResult.projectedExpenses
-                  )
-                }));
-              }}
+              preloadedTrigger={preloadedTrigger}
+              onClearPreloadedTrigger={() => setPreloadedTrigger(null)}
+              onCommitToLive={(r) => setFinancials((p) => ({
+                ...p,
+                revenue: r.projectedRevenue,
+                expenses: r.projectedExpenses,
+                profit: r.projectedProfit,
+                cashOnHand: r.projectedCash,
+                healthScore: r.projectedHealthScore,
+                growthScore: r.projectedGrowthScore,
+                monthlyTrend: scaleTrend(p.monthlyTrend, p.revenue, r.projectedRevenue, p.expenses, r.projectedExpenses),
+              }))}
               onApplyPreset={() => {}}
               baseRevenue={financials.revenue}
               baseExpenses={financials.expenses}
@@ -369,24 +194,31 @@ export default function App() {
               baseGrowth={financials.growthScore}
             />
           )}
-
-          {activeTab === 'risks' && (
-            <RiskDashboard />
-          )}
-
-          {activeTab === 'insights' && (
-            <AIInsightsDashboard onShortcutToSimulate={handleShortcutToSimulate} />
-          )}
+          {activeTab === 'risks' && <RiskDashboard />}
+          {activeTab === 'insights' && <AIInsightsDashboard onShortcutToSimulate={handleShortcut} />}
         </main>
 
-        {/* 3. Sliding Financial Copilot chatbot right sidebar panel */}
         {showCopilot && (
-          <aside className="w-full md:w-96 border-t md:border-t-0 md:border-l border-zinc-800 bg-zinc-900 overflow-y-auto shrink-0 transition-all duration-300">
+          <aside className="w-full md:w-96 border-t md:border-t-0 md:border-l border-surface-700/30 bg-surface-950/80 backdrop-blur-sm overflow-y-auto shrink-0">
             <FinancialCopilot financials={financials} />
           </aside>
         )}
       </div>
 
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: '#1a1d2e',
+            border: '1px solid rgba(99,102,241,0.15)',
+            color: '#e2e8f0',
+            fontSize: '12px',
+            borderRadius: '12px',
+            fontFamily: 'JetBrains Mono, monospace',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          },
+        }}
+      />
     </div>
   );
 }

@@ -1,267 +1,128 @@
 import React, { useState } from 'react';
-import { AlertTriangle, AlertCircle, ShieldAlert, ArrowRight, ShieldCheck, CheckCircle, Plus, Trash } from 'lucide-react';
+import { AlertTriangle, AlertCircle, ShieldAlert, ShieldCheck, Plus, Trash2, ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { toast } from 'sonner';
 import { defaultRisks } from '../data';
 import { RiskItem } from '../types';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 export default function RiskDashboard() {
   const [risks, setRisks] = useState<RiskItem[]>(defaultRisks);
-  
-  // States to add new threshold alerts
-  const [newTitle, setNewTitle] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [newSeverity, setNewSeverity] = useState<'high' | 'medium' | 'low'>('medium');
-  const [newCategory, setNewCategory] = useState<'cash' | 'operations' | 'market' | 'revenue'>('operations');
-  const [newAction, setNewAction] = useState('');
-  const [newTrigger, setNewTrigger] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [nr, setNr] = useState({ title: '', description: '', severity: 'medium' as RiskItem['severity'], category: 'operations' as RiskItem['category'], actionPlan: '', triggerCondition: '' });
 
-  const handleAddRisk = (e: React.FormEvent) => {
+  const add = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle || !newDesc || !newAction || !newTrigger) return;
-    
-    const added: RiskItem = {
-      id: `risk_custom_${Date.now()}`,
-      title: newTitle,
-      severity: newSeverity,
-      category: newCategory,
-      description: newDesc,
-      trend: 'stable',
-      actionPlan: newAction,
-      triggerCondition: newTrigger
-    };
-
-    setRisks([added, ...risks]);
-    
-    // reset
-    setNewTitle('');
-    setNewDesc('');
-    setNewAction('');
-    setNewTrigger('');
+    if (!nr.title || !nr.description || !nr.actionPlan || !nr.triggerCondition) { toast.error('Fill all fields'); return; }
+    setRisks([{ id: `r_${Date.now()}`, ...nr, trend: 'stable' }, ...risks]);
+    setNr({ title: '', description: '', severity: 'medium', category: 'operations', actionPlan: '', triggerCondition: '' });
     setShowForm(false);
+    toast.success('Risk added', { description: `"${nr.title}" is now monitored.` });
   };
 
-  const handleRemoveRisk = (id: string) => {
-    setRisks(risks.filter((risk) => risk.id !== id));
-  };
+  const highCount = risks.filter((r) => r.severity === 'high').length;
+  const medCount = risks.filter((r) => r.severity === 'medium').length;
 
-  const highRiskCount = risks.filter((r) => r.severity === 'high').length;
-  const medRiskCount = risks.filter((r) => r.severity === 'medium').length;
+  const severityStyle = (s: string) =>
+    s === 'high' ? 'border-rose-800/30 bg-rose-950/10 text-rose-400' :
+    s === 'medium' ? 'border-amber-800/30 bg-amber-950/10 text-amber-400' :
+    'border-surface-600/30 bg-surface-800/30 text-surface-400';
+
+  const severityCard = (s: string) =>
+    s === 'high' ? 'border-rose-900/40 hover:border-rose-800/40' :
+    s === 'medium' ? 'border-amber-900/40 hover:border-amber-800/40' :
+    'border-surface-700/30 hover:border-surface-600/30';
 
   return (
-    <div className="space-y-6" id="risk_dashboard_view_main">
-      {/* Title Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
+    <div className="space-y-6 animate-fade-in-up">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-surface-700/30 pb-5">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-2">
-            <ShieldAlert className="w-5 h-5 text-rose-500 animate-pulse" />
-            Risk Intelligence Center
+          <h1 className="text-2xl font-bold font-display text-white flex items-center gap-2">
+            <ShieldAlert className="w-5 h-5 text-rose-400" />
+            Risk Intelligence
           </h1>
-          <p className="text-sm text-zinc-400 mt-1">
-            Autonomous threat detection. Monitor margins, supply curves, and trigger warnings before liquidity fractures.
-          </p>
+          <p className="text-sm text-surface-400 mt-1">Autonomous threat detection — monitor margins, supply curves, and trigger warnings.</p>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="px-3 py-1.5 bg-zinc-905 border border-zinc-800 rounded-lg text-xs font-mono text-white hover:bg-zinc-800 flex items-center gap-1.5 transition-all"
-        >
-          <Plus className="w-3.5 h-3.5 text-indigo-400" />
-          {showForm ? 'Close Sandbox Form' : 'Provision Custom Threshold Alert'}
-        </button>
+        <Button variant={showForm ? 'danger' : 'secondary'} size="sm" onClick={() => setShowForm(!showForm)}>
+          <Plus className="w-3.5 h-3.5" /> {showForm ? 'Close' : 'Add Alert'}
+        </Button>
       </div>
 
-      {/* Emergency Alert banners / Metrics Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-zinc-900 border border-zinc-855 border-rose-950 p-4 rounded-xl flex items-center gap-4">
-          <div className="p-3 bg-rose-955 bg-rose-950/40 text-rose-400 border border-rose-900 rounded-lg">
-            <AlertCircle className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase text-zinc-500 font-mono block">CRITICAL THREATS</span>
-            <span className="text-xl font-bold font-mono text-rose-400 block">{highRiskCount} Active</span>
-            <span className="text-[10px] text-zinc-400 font-sans mt-0.5">Immediate intervention recommended</span>
-          </div>
-        </div>
-
-        <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex items-center gap-4">
-          <div className="p-3 bg-amber-950/40 text-amber-500 border border-amber-900 rounded-lg">
-            <AlertTriangle className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase text-zinc-500 font-mono block">WARN ALERTS</span>
-            <span className="text-xl font-bold font-mono text-amber-500 block">{medRiskCount} Active</span>
-            <span className="text-[10px] text-zinc-400 font-sans mt-0.5">Monitor trigger indicators</span>
-          </div>
-        </div>
-
-        <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-xl flex items-center gap-4">
-          <div className="p-3 bg-indigo-950/40 text-indigo-400 border border-indigo-900 rounded-lg">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase text-zinc-500 font-mono block">RUNWAY BUFFER</span>
-            <span className="text-xl font-bold font-mono text-indigo-400 block">Satisfactory</span>
-            <span className="text-[10px] text-zinc-400 font-sans mt-0.5">Liquid cash covers next ~3.5 quarters</span>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="border-rose-900/40">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-800/30 text-rose-400 shrink-0"><AlertCircle className="w-5 h-5" /></div>
+            <div><span className="text-[9px] uppercase text-surface-500 font-mono tracking-wider">Critical</span><span className="text-xl font-bold font-mono text-rose-400 block">{highCount} Active</span><span className="text-[10px] text-surface-500">Immediate action needed</span></div>
+          </CardContent>
+        </Card>
+        <Card className="border-amber-900/40">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/30 text-amber-400 shrink-0"><AlertTriangle className="w-5 h-5" /></div>
+            <div><span className="text-[9px] uppercase text-surface-500 font-mono tracking-wider">Warnings</span><span className="text-xl font-bold font-mono text-amber-400 block">{medCount} Active</span><span className="text-[10px] text-surface-500">Monitor triggers</span></div>
+          </CardContent>
+        </Card>
+        <Card className="border-emerald-900/40">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-800/30 text-emerald-400 shrink-0"><ShieldCheck className="w-5 h-5" /></div>
+            <div><span className="text-[9px] uppercase text-surface-500 font-mono tracking-wider">Status</span><span className="text-xl font-bold font-mono text-emerald-400 block">Stable</span><span className="text-[10px] text-surface-500">All systems nominal</span></div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Custom Threshold Form */}
       {showForm && (
-        <form onSubmit={handleAddRisk} className="bg-zinc-905 bg-zinc-900 border border-zinc-800 p-5 rounded-xl space-y-4">
-          <div>
-            <h3 className="text-sm font-semibold text-white tracking-tight font-mono">PROVISION RISK THRESHOLD</h3>
-            <p className="text-xs text-zinc-400">Add custom business parameters to the threat detection queue.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-400 font-mono">Metric or Warning Title</label>
-              <input 
-                type="text" 
-                required 
-                value={newTitle} 
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Enterprise subscription churn uptick"
-                className="w-full text-xs bg-zinc-950 border border-zinc-800 text-white p-2.5 rounded-lg focus:outline-none"
-              />
-            </div>
-            
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-400 font-mono">Evaluation Trigger Condition</label>
-              <input 
-                type="text" 
-                required 
-                value={newTrigger} 
-                onChange={(e) => setNewTrigger(e.target.value)}
-                placeholder="SaaS segment churn passes > 4.5% limit"
-                className="w-full text-xs bg-zinc-950 border border-zinc-800 text-white p-2.5 rounded-lg focus:outline-none"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-400 font-mono">Early Warning System Category</label>
-              <select 
-                value={newCategory} 
-                onChange={(e) => setNewCategory(e.target.value as any)}
-                className="w-full text-xs bg-zinc-950 border border-zinc-800 text-white p-2.5 rounded-lg focus:outline-none"
-              >
-                <option value="operations">Operations & COGS</option>
-                <option value="cash">Cash & Liquidity Runway</option>
-                <option value="market">Macro Economic & Channel</option>
-                <option value="revenue">Inflows Velocity</option>
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-400 font-mono">Severity Level</label>
-              <select 
-                value={newSeverity} 
-                onChange={(e) => setNewSeverity(e.target.value as any)}
-                className="w-full text-xs bg-zinc-950 border border-zinc-800 text-white p-2.5 rounded-lg focus:outline-none"
-              >
-                <option value="high">Critical / High Severity</option>
-                <option value="medium">Warning / Medium Severity</option>
-                <option value="low">Notice / Low Severity</option>
-              </select>
-            </div>
-
-            <div className="md:col-span-2 space-y-1">
-              <label className="text-xs text-zinc-400 font-mono">Threat Breakdown</label>
-              <input 
-                type="text" 
-                required 
-                value={newDesc} 
-                onChange={(e) => setNewDesc(e.target.value)}
-                placeholder="Core enterprise platform clients scaling back usage tiers due to internal efficiency adjustments..."
-                className="w-full text-xs bg-zinc-950 border border-zinc-800 text-white p-2.5 rounded-lg focus:outline-none"
-              />
-            </div>
-
-            <div className="md:col-span-2 space-y-1">
-              <label className="text-xs text-zinc-400 font-mono">Mitigation Corrective Action Plan</label>
-              <input 
-                type="text" 
-                required 
-                value={newAction} 
-                onChange={(e) => setNewAction(e.target.value)}
-                placeholder="Instruct accounts team to contact clients, audit unused user licenses, offer hybrid upgrade configurations..."
-                className="w-full text-xs bg-zinc-950 border border-zinc-800 text-white p-2.5 rounded-lg focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 text-xs font-mono">
-            <button 
-              type="button" 
-              onClick={() => setShowForm(false)} 
-              className="px-3 py-2 border border-zinc-800 hover:border-zinc-700 rounded-lg text-zinc-400"
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white font-medium"
-            >
-              Inject To Detection Net
-            </button>
-          </div>
-        </form>
+        <Card accent className="border-amber-900/30 animate-fade-in-up">
+          <form onSubmit={add}>
+            <CardHeader><CardTitle><Plus className="w-4 h-4 text-amber-400" /> Custom Risk Threshold</CardTitle><CardDescription>Add a business parameter to the AI threat detection queue.</CardDescription></CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2"><Input label="Risk Title" placeholder="e.g., Enterprise churn spike" value={nr.title} onChange={(e) => setNr({ ...nr, title: e.target.value })} icon={<AlertTriangle className="w-4 h-4" />} /></div>
+                <div><span className="text-[10px] text-surface-400 uppercase font-mono tracking-wider block mb-1.5 font-semibold">Category</span>
+                  <Select value={nr.category} onValueChange={(v) => setNr({ ...nr, category: v as any })}><SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="operations">Operations</SelectItem><SelectItem value="cash">Cash & Liquidity</SelectItem><SelectItem value="market">Market</SelectItem><SelectItem value="revenue">Revenue</SelectItem></SelectContent></Select></div>
+                <div><span className="text-[10px] text-surface-400 uppercase font-mono tracking-wider block mb-1.5 font-semibold">Severity</span>
+                  <Select value={nr.severity} onValueChange={(v) => setNr({ ...nr, severity: v as any })}><SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="high">Critical</SelectItem><SelectItem value="medium">Warning</SelectItem><SelectItem value="low">Notice</SelectItem></SelectContent></Select></div>
+                <div className="sm:col-span-2"><Input label="Trigger Condition" placeholder="e.g., Churn exceeds 4.5%" value={nr.triggerCondition} onChange={(e) => setNr({ ...nr, triggerCondition: e.target.value })} /></div>
+                <div className="sm:col-span-2"><Input label="Description" placeholder="Detailed breakdown..." value={nr.description} onChange={(e) => setNr({ ...nr, description: e.target.value })} /></div>
+                <div className="sm:col-span-2"><Input label="Mitigation Plan" placeholder="Steps to resolve..." value={nr.actionPlan} onChange={(e) => setNr({ ...nr, actionPlan: e.target.value })} /></div>
+              </div>
+            </CardContent>
+            <div className="px-5 pb-5 flex justify-end gap-2"><Button type="button" variant="ghost" size="sm" onClick={() => setShowForm(false)}>Cancel</Button><Button type="submit" size="sm">Add to Detection Net</Button></div>
+          </form>
+        </Card>
       )}
 
-      {/* Risks Grid layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5" id="risks_feed_list">
-        {risks.map((risk) => (
-          <div 
-            key={risk.id}
-            className={`bg-zinc-900 border p-5 rounded-xl flex flex-col justify-between space-y-4 transition-all relative group ${
-              risk.severity === 'high' 
-                ? 'border-rose-950 hover:border-rose-800 bg-gradient-to-br from-zinc-900 to-rose-955' 
-                : risk.severity === 'medium'
-                ? 'border-amber-950 hover:border-amber-800 bg-gradient-to-br from-zinc-900 to-amber-955'
-                : 'border-zinc-800 hover:border-zinc-700'
-            }`}
-          >
-            {/* Header, badge, delete button */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-start gap-4">
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border ${
-                  risk.severity === 'high' 
-                    ? 'text-rose-400 border-rose-805 bg-rose-950/40' 
-                    : risk.severity === 'medium'
-                    ? 'text-amber-500 border-amber-805 bg-amber-950/40'
-                    : 'text-zinc-400 border-zinc-700 bg-zinc-800'
-                }`}>
-                  {risk.severity} severity
-                </span>
-                <button
-                  onClick={() => handleRemoveRisk(risk.id)}
-                  className="p-1 hover:text-rose-400 rounded transition-all text-zinc-500 opacity-20 group-hover:opacity-100"
-                  title="Remove threat alert"
-                >
-                  <Trash className="w-3.5 h-3.5" />
-                </button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {risks.map((r) => (
+          <Card key={r.id} className={`${severityCard(r.severity)} group`}>
+            <CardContent className="p-5">
+              <div className="flex justify-between items-start gap-3 mb-3">
+                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-mono font-semibold border ${severityStyle(r.severity)}`}>
+                  {r.severity === 'high' ? <AlertCircle className="w-3 h-3" /> : r.severity === 'medium' ? <AlertTriangle className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                  {r.severity} · {r.category}
+                </div>
+                <button onClick={() => { setRisks(risks.filter((x) => x.id !== r.id)); toast.info('Removed'); }}
+                  className="p-1 hover:text-danger rounded transition-all text-surface-600 opacity-0 group-hover:opacity-100"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
-              <h3 className="text-sm font-semibold text-white tracking-tight leading-tight">{risk.title}</h3>
-              <p className="text-xs text-zinc-400 leading-normal font-sans">{risk.description}</p>
-            </div>
-
-            {/* Middle technical alert and triggers */}
-            <div className="bg-zinc-950 p-2.5 border border-zinc-850 rounded-lg space-y-1.5 font-mono">
-              <div className="flex justify-between items-center text-[10px] border-b border-zinc-850 pb-1">
-                <span className="text-zinc-500">Early Trigger Metric</span>
-                <span className="text-amber-500 font-bold font-mono">ACTIVE</span>
+              <h3 className="text-sm font-semibold text-white tracking-tight mb-1.5">{r.title}</h3>
+              <p className="text-xs text-surface-400 leading-relaxed mb-3">{r.description}</p>
+              <div className="bg-surface-900/80 border border-surface-700/20 rounded-xl p-3 mb-3">
+                <div className="flex justify-between items-center text-[9px] font-mono border-b border-surface-700/20 pb-1.5 mb-1.5">
+                  <span className="text-surface-500">Trigger</span>
+                  <span className={`flex items-center gap-1 ${r.trend === 'increasing' ? 'text-rose-400' : r.trend === 'decreasing' ? 'text-emerald-400' : 'text-surface-400'}`}>
+                    {r.trend === 'increasing' ? <><ArrowUp className="w-3 h-3" /> RISING</> : r.trend === 'decreasing' ? <><ArrowDown className="w-3 h-3" /> FALLING</> : <Minus className="w-3 h-3" />}
+                  </span>
+                </div>
+                <p className="text-[10px] text-surface-300">{r.triggerCondition}</p>
               </div>
-              <p className="text-[10px] text-zinc-300 leading-snug">{risk.triggerCondition}</p>
-            </div>
-
-            {/* Corrective measures action plan */}
-            <div className="space-y-1 pt-2 border-t border-zinc-800/60">
-              <span className="text-[9px] uppercase font-mono tracking-wider font-bold text-zinc-500 block">Mitigation Action Plan</span>
-              <p className="text-[11px] text-zinc-450 leading-relaxed italic text-zinc-350">
-                "{risk.actionPlan}"
-              </p>
-            </div>
-          </div>
+              <div className="pt-2 border-t border-surface-700/20">
+                <span className="text-[8px] uppercase font-mono tracking-wider font-bold text-surface-500 block mb-1">Mitigation</span>
+                <p className="text-[11px] text-surface-400 leading-relaxed italic">"{r.actionPlan}"</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>
