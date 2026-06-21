@@ -20,8 +20,11 @@
       "dest": "/api/simulate.ts"
     },
     {
+      "handle": "filesystem"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/dist/$1"
+      "dest": "/dist/index.html"
     }
   ],
   "buildCommand": "npm run build",
